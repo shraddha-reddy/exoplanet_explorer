@@ -1,16 +1,40 @@
-# React + Vite
+# Exoplanet Explorer
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Interactive sky map and system viewer for confirmed exoplanets (NASA data), with an AI astronomer grounded in that data.
 
-Currently, two official plugins are available:
+## Run it
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Backend (needs Python 3.10+ and Ollama):
 
-## React Compiler
+    cd backend
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install fastapi uvicorn requests python-dotenv
+    cp .env.example .env
+    ollama pull llama3.2
+    uvicorn main:app --reload
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Frontend (second terminal):
 
-## Expanding the Oxlint configuration
+    cd frontend
+    npm install
+    npm run dev
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Open http://localhost:5173
+
+## Structure
+
+- backend/main.py: API (/planets, /chat) and the astronomer system prompt
+- backend/exoplanets.json: NASA data (refresh with fetch_data.py)
+- frontend/src/App.jsx: sky view
+- frontend/src/SystemView.jsx: 3D system view
+- frontend/src/Panel.jsx, Dots.jsx, Halo.jsx, FlyTo.jsx: sky view pieces
+
+## Working together
+
+Never push to main. Branch, push, open a Pull Request:
+
+    git checkout -b ui/your-feature
+    git push -u origin ui/your-feature
+
+Run `git pull origin main` before starting new work.

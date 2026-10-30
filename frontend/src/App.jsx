@@ -1,248 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import * as THREE from "three";
+import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import SystemView from "./SystemView";
+import GalaxyView from "./GalaxyView";
+import Dots from "./Dots";
+import Halo from "./Halo";
+import FlyTo from "./FlyTo";
+import Panel from "./Panel";
+import Nebula from "./Nebula";
+import Zoom from "./Zoom";
+import { API, makeCircleTexture } from "./utils";
 import "./App.css";
 
-const API = "http://127.0.0.1:8000";
-const R = 50;
-
-function toXYZ(raDeg, decDeg) {
-  const ra = (raDeg * Math.PI) / 180;
-  const dec = (decDeg * Math.PI) / 180;
-  return [
-    R * Math.cos(dec) * Math.cos(ra),
-    R * Math.sin(dec),
-    -R * Math.cos(dec) * Math.sin(ra),
-  ];
-}
-
-function colorFor(hz) {
-  if (hz === "In habitable zone") return "#4ade80";
-  if (hz === "Too hot") return "#fb923c";
-  if (hz === "Too cold") return "#60a5fa";
-  return "#cbd5e1";
-}
-
-function makeCircleTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const ctx = c.getContext("2d");
-  ctx.beginPath();
-  ctx.arc(32, 32, 30, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff";
-  ctx.fill();
-  return new THREE.CanvasTexture(c);
-}
-
-function Dots({ list, size, texture, onSelect }) {
-  const { positions, colors } = useMemo(() => {
-    const positions = new Float32Array(list.length * 3);
-    const colors = new Float32Array(list.length * 3);
-    const col = new THREE.Color();
-    list.forEach((p, i) => {
-      positions.set(toXYZ(p.ra, p.dec), i * 3);
-      col.set(colorFor(p.hz_status));
-      colors.set([col.r, col.g, col.b], i * 3);
-    });
-    return { positions, colors };
-  }, [list]);
-
-  if (!list.length) return null;
-
-  return (
-    <points
-      key={list.length + "-" + list[0].pl_name}
-      renderOrder={size > 12 ? 2 : 1}
-      frustumCulled={false}
-      onClick={(e) => {
-        e.stopPropagation();
-        const p = list[e.index];
-        if (p) onSelect(p);
-      }}
-      onPointerOver={() => (document.body.style.cursor = "pointer")}
-      onPointerOut={() => (document.body.style.cursor = "auto")}
-    >
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        map={texture}
-        alphaTest={0.5}
-        transparent
-        vertexColors
-        size={size}
-        sizeAttenuation={false}
-        depthTest={false}
-      />
-    </points>
-  );
-}
-
-function Halo({ planet, texture }) {
-  const pos = useMemo(() => new Float32Array(toXYZ(planet.ra, planet.dec)), [planet]);
-  return (
-    <points key={planet.pl_name} renderOrder={0} frustumCulled={false} raycast={() => null}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[pos, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        map={texture}
-        alphaTest={0.5}
-        transparent
-        color="#ffffff"
-        size={30}
-        sizeAttenuation={false}
-        depthTest={false}
-      />
-    </points>
-  );
-}
-
-function FlyTo({ target, controlsRef }) {
-  const { camera } = useThree();
-
-  useEffect(() => {
-    if (!target) return;
-    const [x, y, z] = toXYZ(target.ra, target.dec);
-    // the camera sits on the opposite side of the origin, so it looks toward the planet
-    const pos = new THREE.Vector3(-x, -y, -z).normalize().multiplyScalar(0.1);
-    camera.position.copy(pos);
-    camera.lookAt(0, 0, 0);
-    controlsRef.current?.update();
-  }, [target, camera, controlsRef]);
-
-  return null;
-}
-
-function planetLabel(p) {
-  if (p.hostname && p.pl_name.startsWith(p.hostname)) {
-    const rest = p.pl_name.slice(p.hostname.length).trim();
-    return rest || p.pl_name;
-  }
-  return p.pl_name;
-}
-
-function Panel({ planet, siblings, onPick, onClose, onViewSystem }) {
-  const [question, setQuestion] = useState("");
-  const [reply, setReply] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setReply("");
-    setQuestion("");
-  }, [planet.pl_name]);
-
-  async function ask(e) {
-    e.preventDefault();
-    if (!question.trim()) return;
-    setLoading(true);
-    setReply("");
-    try {
-      const res = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question, planets: [planet.pl_name] }),
-      });
-      const data = await res.json();
-      setReply(res.ok ? data.reply : `Error: ${data.detail || res.status}`);
-    } catch (err) {
-      setReply(`Could not reach the backend: ${err.message}`);
-    }
-    setLoading(false);
-  }
-
-  const ly = planet.sy_dist != null ? (planet.sy_dist * 3.2616).toFixed(1) : "unknown";
-  const c = planet.pl_eqt != null ? (planet.pl_eqt - 273.15).toFixed(0) : null;
-
-  return (
-    <div className="panel">
-      <button onClick={onClose} style={{ float: "right", marginTop: 0, background: "#26335f" }}>
-        Close
-      </button>
-      <h2>{planet.pl_name}</h2>
-      <div style={{ color: "#8d9ac7" }}>
-        {planet.type} · host star {planet.hostname}
-      </div>
-
-      {siblings.length > 1 && (
-        <div style={{ margin: "12px 0" }}>
-          <div style={{ color: "#8d9ac7", fontSize: 13, marginBottom: 6 }}>
-            {planet.hostname} has {siblings.length} planets at this spot. Pick one:
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {siblings.map((s) => {
-              const active = s.pl_name === planet.pl_name;
-              const col = colorFor(s.hz_status);
-              return (
-                <button
-                  key={s.pl_name}
-                  type="button"
-                  title={`${s.pl_name} · ${s.hz_status}`}
-                  onClick={() => onPick(s)}
-                  style={{
-                    width: "auto",
-                    marginTop: 0,
-                    padding: "6px 14px",
-                    borderRadius: 999,
-                    border: `1px solid ${col}`,
-                    background: active ? col : "#141b38",
-                    color: active ? "#0b1020" : col,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {planetLabel(s)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <dl>
-        <dt>Habitable zone</dt>
-        <dd>{planet.hz_status}</dd>
-        <dt>ESI</dt>
-        <dd>
-          {planet.esi ?? "n/a"} (based on {planet.esi_factors} of 4 factors)
-        </dd>
-        <dt>Distance</dt>
-        <dd>{ly} light-years</dd>
-        <dt>Radius</dt>
-        <dd>{planet.pl_rade ?? "n/a"} Earth radii</dd>
-        <dt>Orbital period</dt>
-        <dd>{planet.pl_orbper ?? "n/a"} days</dd>
-        <dt>Eq. temperature</dt>
-        <dd>{planet.pl_eqt != null ? `${planet.pl_eqt} K (${c} °C)` : "n/a"}</dd>
-        <dt>Discovered</dt>
-        <dd>
-          {planet.disc_year} ({planet.discoverymethod})
-        </dd>
-      </dl>
-      <button
-        type="button"
-        onClick={() => onViewSystem(planet.hostname)}
-        style={{ marginBottom: 10 }}
-      >
-        View system
-      </button>
-      <form onSubmit={ask}>
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask the astronomer about this planet..."
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? "Thinking..." : "Ask"}
-        </button>
-      </form>
-      {reply && <div className="reply">{reply}</div>}
-    </div>
-  );
-}
+const zoomBtn = {
+  width: 40,
+  height: 40,
+  marginTop: 0,
+  padding: 0,
+  fontSize: 20,
+  borderRadius: 10,
+  border: "1px solid #26335f",
+  background: "#0b1020ee",
+  color: "#e2e8f0",
+  cursor: "pointer",
+};
 
 export default function App() {
   const [planets, setPlanets] = useState([]);
@@ -250,9 +31,12 @@ export default function App() {
   const [q, setQ] = useState("");
   const [habitableOnly, setHabitableOnly] = useState(false);
   const [status, setStatus] = useState("Loading...");
-  const [systemHost, setSystemHost] = useState(null);
+  const [systemPlanet, setSystemPlanet] = useState(null);
   const [flyTarget, setFlyTarget] = useState(null);
+  const [mode, setMode] = useState("sky"); // "sky" | "galaxy"
   const controlsRef = useRef(null);
+  const tipRef = useRef(null);
+  const zoomApi = useRef(null);
 
   const texture = useMemo(() => makeCircleTexture(), []);
   const habitable = useMemo(
@@ -271,6 +55,25 @@ export default function App() {
       .sort((a, b) => (a.pl_orbper ?? Infinity) - (b.pl_orbper ?? Infinity));
   }, [planets, selected]);
 
+  // tooltip is updated directly on the DOM so mouse movement never re-renders the app
+  function handleHover(p, ev) {
+    const el = tipRef.current;
+    if (!el) return;
+    if (!p || !ev) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "block";
+    el.style.left = ev.clientX + 14 + "px";
+    el.style.top = ev.clientY + 14 + "px";
+    el.textContent = `${p.pl_name} · ${p.type} · ${p.hz_status}`;
+  }
+
+  function goToKepler() {
+    setFlyTarget({ ra: 290.7, dec: 44.5, pl_name: "kepler-field" });
+    zoomApi.current?.set(14);
+  }
+
   useEffect(() => {
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
@@ -284,7 +87,10 @@ export default function App() {
           (p) => p.ra != null && p.dec != null
         );
         setPlanets(list);
-        if (q.trim() && list.length) setFlyTarget(list[0]);
+        if (q.trim() && list.length) {
+          setFlyTarget(list[0]);
+          zoomApi.current?.set(25);
+        }
         setStatus(`${list.length} planets`);
       } catch (err) {
         if (err.name !== "AbortError") setStatus("Backend not reachable");
@@ -296,11 +102,18 @@ export default function App() {
     };
   }, [q, habitableOnly]);
 
-  if (systemHost) {
+  if (systemPlanet) {
     return (
-      <SystemView api={API} hostname={systemHost} onBack={() => setSystemHost(null)} />
+      <SystemView
+        api={API}
+        hostname={systemPlanet.hostname}
+        initialPlanet={systemPlanet}
+        onBack={() => setSystemPlanet(null)}
+      />
     );
   }
+
+  const galaxy = mode === "galaxy";
 
   return (
     <>
@@ -333,23 +146,125 @@ export default function App() {
         <span style={{ color: "#cbd5e1" }}>● other</span>
       </div>
 
-      <Canvas
-        camera={{ position: [0, 0, 0.1], fov: 60 }}
-        raycaster={{ params: { Points: { threshold: 0.5 } } }}
-        onPointerMissed={() => setSelected(null)}
+      {/* sky / galaxy toggle */}
+      <div
+        style={{
+          position: "fixed",
+          zIndex: 20,
+          bottom: 16,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+        }}
       >
-        <Stars radius={200} depth={60} count={4000} factor={5} fade />
-        {selected && <Halo planet={selected} texture={texture} />}
-        <Dots list={others} size={11} texture={texture} onSelect={setSelected} />
-        <Dots list={habitable} size={16} texture={texture} onSelect={setSelected} />
-        <FlyTo target={flyTarget} controlsRef={controlsRef} />
-        <OrbitControls
-          ref={controlsRef}
-          enableZoom={false}
-          enablePan={false}
-          rotateSpeed={-0.35}
+        <button
+          type="button"
+          onClick={() => setMode(galaxy ? "sky" : "galaxy")}
+          style={{
+            ...zoomBtn,
+            width: "auto",
+            padding: "0 18px",
+            fontSize: 14,
+            fontWeight: 600,
+            borderRadius: 999,
+          }}
+        >
+          {galaxy ? "← Back to sky view" : "Zoom out to galaxy map"}
+        </button>
+        {galaxy && (
+          <div style={{ color: "#8d9ac7", fontSize: 12 }}>
+            Distance scale is logarithmic (compressed) · Sun at centre
+          </div>
+        )}
+      </div>
+
+      {!galaxy && (
+        <div
+          style={{
+            position: "fixed",
+            zIndex: 20,
+            bottom: 16,
+            right: selected ? 400 : 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            alignItems: "flex-end",
+          }}
+        >
+          <button type="button" style={zoomBtn} title="Zoom in" onClick={() => zoomApi.current?.zoomBy(0.6)}>
+            +
+          </button>
+          <button type="button" style={zoomBtn} title="Zoom out" onClick={() => zoomApi.current?.zoomBy(1.6)}>
+            −
+          </button>
+          <button
+            type="button"
+            style={{ ...zoomBtn, width: "auto", padding: "0 12px", fontSize: 12 }}
+            title="Reset view"
+            onClick={() => zoomApi.current?.set(60)}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            style={{ ...zoomBtn, width: "auto", padding: "0 12px", fontSize: 12 }}
+            title="Jump to the Kepler field"
+            onClick={goToKepler}
+          >
+            Kepler field
+          </button>
+        </div>
+      )}
+
+      <div
+        ref={tipRef}
+        style={{
+          display: "none",
+          position: "fixed",
+          zIndex: 30,
+          pointerEvents: "none",
+          padding: "6px 10px",
+          borderRadius: 8,
+          background: "#0b1020ee",
+          border: "1px solid #26335f",
+          color: "#e2e8f0",
+          fontSize: 13,
+        }}
+      />
+
+      {galaxy ? (
+        <GalaxyView
+          planets={planets}
+          selected={selected}
+          onSelect={setSelected}
+          onHover={handleHover}
         />
-      </Canvas>
+      ) : (
+        <Canvas
+          camera={{ position: [0, 0, 0.1], fov: 60, far: 1000 }}
+          raycaster={{ params: { Points: { threshold: 0.5 } } }}
+          onPointerMissed={() => setSelected(null)}
+        >
+          <Nebula />
+          <Stars radius={200} depth={60} count={4000} factor={5} fade />
+          {selected && <Halo planet={selected} texture={texture} />}
+          <Dots list={others} size={11} texture={texture} onSelect={setSelected} onHover={handleHover} />
+          <Dots list={habitable} size={16} texture={texture} onSelect={setSelected} onHover={handleHover} />
+          <FlyTo target={flyTarget} controlsRef={controlsRef} />
+          <Zoom api={zoomApi} controlsRef={controlsRef} />
+          <OrbitControls
+            ref={controlsRef}
+            enableZoom={false}
+            enablePan={false}
+            rotateSpeed={-0.35}
+            autoRotate={!selected}
+            autoRotateSpeed={0.3}
+          />
+        </Canvas>
+      )}
 
       {selected && (
         <Panel
@@ -357,7 +272,7 @@ export default function App() {
           siblings={siblings}
           onPick={setSelected}
           onClose={() => setSelected(null)}
-          onViewSystem={setSystemHost}
+          onViewSystem={setSystemPlanet}
         />
       )}
     </>

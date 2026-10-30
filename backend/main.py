@@ -58,6 +58,8 @@ Rules:
 - Equilibrium temperature is not surface temperature; mention this when discussing habitability.
 - Habitability here means Earth-likeness, not evidence of life. Be honest about uncertainty.
 - Keep answers concise.
+- Use only facts from the data. Do not speculate about atmosphere, greenhouse effects, or surface conditions.
+- Never call life likely or promising. Say the data cannot tell us whether life exists.
 - Equilibrium temperature is not surface temperature. Don’t describe the surface."""
 
 
