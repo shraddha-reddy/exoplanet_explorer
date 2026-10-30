@@ -25,6 +25,15 @@ function starColor(teff) {
   return "#cfe0ff";
 }
 
+function starLabel(teff) {
+  if (teff == null) return "Star type unknown";
+  if (teff < 3700) return "Cool red dwarf";
+  if (teff < 5200) return "Orange dwarf";
+  if (teff < 6000) return "Sun-like star";
+  if (teff < 7500) return "Hot yellow-white star";
+  return "Hot blue-white star";
+}
+
 function shortName(p, hostname) {
   if (p.pl_name.startsWith(hostname)) {
     const rest = p.pl_name.slice(hostname.length).trim();
@@ -103,7 +112,9 @@ function Orbiter({ planet, index, hostname, paused, selected, onSelect }) {
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[orbit - (inHz ? 0.03 : 0.015), orbit + (inHz ? 0.03 : 0.015), 128]} />
+        <ringGeometry
+          args={[orbit - (inHz ? 0.03 : 0.015), orbit + (inHz ? 0.03 : 0.015), 128]}
+        />
         <meshBasicMaterial
           color={inHz ? "#4ade80" : "#3b4a7a"}
           transparent
@@ -204,7 +215,9 @@ function AskBox({ api, names, label }) {
 
   return (
     <div style={{ marginTop: 14, borderTop: "1px solid #26335f", paddingTop: 12 }}>
-      <div style={{ color: "#8d9ac7", fontSize: 13, marginBottom: 8 }}>Ask the astronomer about {label}</div>
+      <div style={{ color: "#8d9ac7", fontSize: 13, marginBottom: 8 }}>
+        Ask the astronomer about {label}
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         {SUGGESTIONS.map((s) => (
           <button
@@ -237,7 +250,15 @@ function AskBox({ api, names, label }) {
         </button>
       </form>
       {reply && (
-        <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.5, color: "#e2e8f0", whiteSpace: "pre-wrap" }}>
+        <div
+          style={{
+            marginTop: 10,
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: "#e2e8f0",
+            whiteSpace: "pre-wrap",
+          }}
+        >
           {reply}
         </div>
       )}
@@ -245,9 +266,9 @@ function AskBox({ api, names, label }) {
   );
 }
 
-export default function SystemView({ api, hostname, onBack }) {
+export default function SystemView({ api, hostname, initialPlanet, onBack }) {
   const [planets, setPlanets] = useState([]);
-  const [picked, setPicked] = useState(null);
+  const [picked, setPicked] = useState(initialPlanet ?? null);
   const [paused, setPaused] = useState(false);
   const [status, setStatus] = useState("Loading system...");
 
@@ -269,8 +290,10 @@ export default function SystemView({ api, hostname, onBack }) {
   }, [api, hostname]);
 
   const first = planets[0];
-  const color = starColor(first?.st_teff);
+  const teff = first?.st_teff;
+  const color = starColor(teff);
   const starRadius = Math.min(1.4, Math.max(0.6, Math.cbrt(first?.st_rad ?? 1)));
+  const hzCount = planets.filter((p) => p.hz_status === "In habitable zone").length;
 
   const askNames = picked ? [picked.pl_name] : planets.map((p) => p.pl_name);
   const askLabel = picked ? picked.pl_name : `the ${hostname} system`;
@@ -309,6 +332,20 @@ export default function SystemView({ api, hostname, onBack }) {
       >
         {picked ? (
           <>
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              style={{
+                float: "right",
+                width: "auto",
+                marginTop: 0,
+                padding: "4px 10px",
+                fontSize: 12,
+                background: "#26335f",
+              }}
+            >
+              Whole system
+            </button>
             <strong style={{ fontSize: 18 }}>{picked.pl_name}</strong>
             <div style={{ color: "#8d9ac7", marginBottom: 8 }}>{picked.type}</div>
             <Row
@@ -321,9 +358,16 @@ export default function SystemView({ api, hostname, onBack }) {
             <Row k="Period" v={picked.pl_orbper != null ? `${picked.pl_orbper} days` : "n/a"} />
           </>
         ) : (
-          <div style={{ color: "#8d9ac7" }}>
-            Click a planet to inspect it, or ask about the whole system below.
-          </div>
+          <>
+            <strong style={{ fontSize: 18 }}>{hostname}</strong>
+            <div style={{ color: "#8d9ac7", marginBottom: 8 }}>{starLabel(teff)}</div>
+            <Row k="Planets" v={planets.length} />
+            <Row
+              k="In habitable zone"
+              v={<span style={{ color: "#4ade80" }}>{hzCount}</span>}
+            />
+            <Row k="Star temp" v={teff != null ? `${teff} K` : "n/a"} />
+          </>
         )}
         <AskBox api={api} names={askNames} label={askLabel} />
       </div>
